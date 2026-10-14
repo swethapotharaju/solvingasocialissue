@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanStreet — Community Sanitation Reporting Platform (Interactive Preview)</title>
+  <!-- Plus Jakarta Sans Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- React & Babel Standalone for Instant Browser Execution -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    :root {
+      --primary: #059669;
+      --primary-hover: #047857;
+      --primary-light: #ecfdf5;
+      --primary-dark: #064e3b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      line-height: 1.5;
+    }
+    button, input, select, textarea {
+      font-family: inherit;
+      transition: all 0.15s ease-in-out;
+    }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid #059669;
+      outline-offset: 2px;
+    }
+    .clean-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+    .clean-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.75rem;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.625rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .badge-submitted { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .badge-under-review { background: #fefce8; color: #a16207; border: 1px solid #fef08a; }
+    .badge-action-planned { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+    .badge-resolved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .badge-unable { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .badge-urgency-high { background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+    .badge-urgency-critical { background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; }
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      background: #059669; color: #fff; font-weight: 700; padding: 0.625rem 1.25rem;
+      border-radius: 0.5rem; border: none; cursor: pointer; min-height: 44px;
+    }
+    .btn-primary:hover { background: #047857; }
+    .btn-secondary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      background: #fff; color: #334155; font-weight: 600; padding: 0.625rem 1.25rem;
+      border-radius: 0.5rem; border: 1px solid #cbd5e1; cursor: pointer; min-height: 44px;
+    }
+    .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; border-radius: 0.5rem; border: 1px solid #cbd5e1;
+      padding: 0.625rem 0.875rem; font-size: 0.95rem; background: #fff; color: #0f172a; min-height: 44px;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: #059669; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
+    }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65);
+      display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem;
+      backdrop-filter: blur(2px);
+    }
+    .modal-content {
+      background: #fff; border-radius: 1rem; max-width: 650px; width: 100%;
+      max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+    }
+    .timeline-item { position: relative; padding-left: 2rem; padding-bottom: 1.5rem; }
+    .timeline-item:last-child { padding-bottom: 0; }
+    .timeline-item::before {
+      content: ''; position: absolute; left: 0.4375rem; top: 1.25rem; bottom: 0;
+      width: 2px; background: #e2e8f0;
+    }
+    .timeline-item:last-child::before { display: none; }
+    .timeline-dot {
+      position: absolute; left: 0; top: 0.25rem; width: 1rem; height: 1rem;
+      border-radius: 50%; background: #059669; border: 2px solid #fff; box-shadow: 0 0 0 2px #a7f3d0;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const STORAGE_KEY = 'cleanstreet_standalone_reports_v1';
+    const COORDINATOR_AUTH_KEY = 'cleanstreet_coord_auth_v1';
+    const COORDINATOR_PIN = 'CLEAN2026';
+
+    const INITIAL_REPORTS = [
+      {
+        id: "CS-2026-001",
+        title: "Overflowing municipal dumpster spilling into pedestrian lane",
+        category: "garbage_overflow",
+        description: "The twin green and blue community dumpsters have not been cleared for over 4 days. Waste is spilling into the road causing a severe foul odor.",
+        locationLandmark: "Opposite Little Angels Primary School, 3rd Cross, Ward 12",
+        urgency: "critical",
+        status: "action_planned",
+        verificationStatus: "coordinator_verified",
+        createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+        internalNotes: [{ id: "n1", author: "Coordinator Priya", note: "Called Ward 12 Sanitary Inspector; replacement truck assigned." }],
+        history: [
+          { id: "h1", fromStatus: "submitted", toStatus: "submitted", timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(), actorRole: "resident", actionNote: "Report filed by resident via community form." },
+          { id: "h2", fromStatus: "submitted", toStatus: "under_review", timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(), actorRole: "coordinator", actionNote: "Site inspected by Coordinator Priya. Confirmed spill near school." },
+          { id: "h3", fromStatus: "under_review", toStatus: "action_planned", timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(), actorRole: "coordinator", actionNote: "Escalated to Zonal Solid Waste Management team. Clearance scheduled." }
+        ]
+      },
+      {
+        id: "CS-2026-002",
+        title: "Choked storm water drain causing stagnant black water",
+        category: "blocked_drain",
+        description: "Plastic covers and silt have completely clogged the underground culvert opening. Stagnant black water is overflowing with high mosquito risk.",
+        locationLandmark: "Near Gandhi Community Hall, 5th Main Road",
+        urgency: "high",
+        status: "resolved",
+        verificationStatus: "resolved_verified",
+        createdAt: new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+        internalNotes: [],
+        history: [
+          { id: "h4", fromStatus: "submitted", toStatus: "submitted", timestamp: new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(), actorRole: "resident", actionNote: "Resident reported clogged drain." },
+          { id: "h5", fromStatus: "submitted", toStatus: "resolved", timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(), actorRole: "coordinator", actionNote: "Culvert unclogged and silt cleared away. Bleaching powder applied." }
+        ]
+      },
+      {
+        id: "CS-2026-003",
+        title: "Construction debris dumped in vacant corner plot",
+        category: "illegal_dumping",
+        description: "Tractor unloaded broken concrete blocks and plaster overnight. Obstruction blocks vehicle turning radius.",
+        locationLandmark: "Plot 42, Green Avenue, Behind Water Tank",
+        urgency: "normal",
+        status: "under_review",
+        verificationStatus: "coordinator_verified",
+        createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+        internalNotes: [],
+        history: [
+          { id: "h6", fromStatus: "submitted", toStatus: "submitted", timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(), actorRole: "resident", actionNote: "Reported unauthorized debris." },
+          { id: "h7", fromStatus: "submitted", toStatus: "under_review", timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(), actorRole: "coordinator", actionNote: "Coordinator verified boundaries." }
+        ]
+      }
+    ];
+
+    const TRANSLATIONS = {
+      en: {
+        appName: "CleanStreet",
+        appTagline: "Community-Powered Sanitation Reporting Platform",
+        disclaimer: "CleanStreet is an independent community tracking tool. Submitting a report does not guarantee municipal action.",
+        dashboard: "Report Dashboard",
+        reportTab: "Report an Issue",
+        coordTab: "Coordinator Portal",
+        guideTab: "Civic Guidance",
+        categories: {
+          garbage_overflow: { label: "Garbage Overflow", icon: "🗑️" },
+          litter: { label: "Litter in Public Spaces", icon: "🚯" },
+          blocked_drain: { label: "Blocked Drain / Silt", icon: "🌊" },
+          illegal_dumping: { label: "Illegal Dumping", icon: "🚚" },
+          other: { label: "Other Sanitation Issue", icon: "⚠️" }
+        },
+        statuses: {
+          submitted: { label: "Submitted", badge: "Awaiting Review" },
+          under_review: { label: "Under Review", badge: "Under Review" },
+          action_planned: { label: "Action Planned", badge: "Action Planned" },
+          resolved: { label: "Resolved", badge: "Resolved & Cleaned" },
+          unable_to_resolve: { label: "Unable to Resolve", badge: "Unable to Resolve" }
+        }
+      },
+      te: {
+        appName: "క్లీన్ స్ట్రీట్ (CleanStreet)",
+        appTagline: "ప్రజా పారిశుద్ధ్య సమస్యల నమోదు మరియు పరిష్కార వేదిక",
+        disclaimer: "క్లీన్ స్ట్రీట్ అనేది స్వతంత్ర పౌర సమన్వయ వేదిక. ఇది అధికారిక మునిసిపల్ ఫిర్యాదులకు ప్రత్యామ్నాయం కాదు.",
+        dashboard: "సమస్యల డ్యాష్‌బోర్డ్",
+        reportTab: "సమస్య నమోదు",
+        coordTab: "సమన్వయకర్త విభాగం",
+        guideTab: "పౌర మార్గదర్శకాలు",
+        categories: {
+          garbage_overflow: { label: "చెత్త కుప్పలు", icon: "🗑️" },
+          litter: { label: "బహిరంగ వ్యర్థాలు", icon: "🚯" },
+          blocked_drain: { label: "మురుగు కాలువ పూడిక", icon: "🌊" },
+          illegal_dumping: { label: "నిబంధనలకు విరుద్ధంగా వ్యర్థాలు", icon: "🚚" },
+          other: { label: "ఇతర సమస్య", icon: "⚠️" }
+        },
+        statuses: {
+          submitted: { label: "సమర్పించబడింది", badge: "పరిశీలనలో ఉంది" },
+          under_review: { label: "పరిశీలన జరుగుతోంది", badge: "పరిశీలనలో" },
+          action_planned: { label: "చర్య ప్రణాళిక", badge: "చర్య ప్రారంభం" },
+          resolved: { label: "పరిష్కరించబడింది", badge: "పరిష్కారం పూర్తి" },
+          unable_to_resolve: { label: "పరిష్కరించడం వీలుపడలేదు", badge: "పరిష్కారం కాలేదు" }
+        }
+      }
+    };
+
+    function App() {
+      const [lang, setLang] = useState('en');
+      const [tab, setTab] = useState('dashboard');
+      const [reports, setReports] = useState(() => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : INITIAL_REPORTS;
+        } catch(e) { return INITIAL_REPORTS; }
+      });
+      const [isCoordinator, setIsCoordinator] = useState(() => sessionStorage.getItem(COORDINATOR_AUTH_KEY) === 'true');
+      const [selectedReport, setSelectedReport] = useState(null);
+      const [isAuthOpen, setIsAuthOpen] = useState(false);
+      const [statusFilter, setStatusFilter] = useState('all');
+      const [categoryFilter, setCategoryFilter] = useState('all');
+      const [searchQuery, setSearchQuery] = useState('');
+
+      const t = TRANSLATIONS[lang];
+
+      useEffect(() => {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+        } catch(e) {}
+      }, [reports]);
+
+      const stats = useMemo(() => ({
+        total: reports.length,
+        unresolved: reports.filter(r => r.status === 'submitted' || r.status === 'under_review').length,
+        inProgress: reports.filter(r => r.status === 'action_planned').length,
+        resolved: reports.filter(r => r.status === 'resolved').length
+      }), [reports]);
+
+      const filteredReports = useMemo(() => {
+        return reports.filter(r => {
+          if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+          if (categoryFilter !== 'all' && r.category !== categoryFilter) return false;
+          if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            return r.title.toLowerCase().includes(q) || r.locationLandmark.toLowerCase().includes(q) || r.id.toLowerCase().includes(q);
+          }
+          return true;
+        });
+      }, [reports, statusFilter, categoryFilter, searchQuery]);
+
+      const handleCreateReport = (newRep) => {
+        const id = `CS-${new Date().getFullYear()}-${String(reports.length + 1).padStart(3, '0')}`;
+        const created = {
+          ...newRep,
+          id,
+          status: 'submitted',
+          verificationStatus: 'unverified',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          internalNotes: [],
+          history: [{
+            id: 'h-' + Date.now(),
+            fromStatus: 'submitted',
+            toStatus: 'submitted',
+            timestamp: new Date().toISOString(),
+            actorRole: 'resident',
+            actionNote: 'Report registered in community platform.'
+          }]
+        };
+        setReports([created, ...reports]);
+        return created;
+      };
+
+      const handleUpdateStatus = (repId, newStat, note) => {
+        const updated = reports.map(r => {
+          if (r.id !== repId) return r;
+          const hist = {
+            id: 'h-' + Date.now(),
+            fromStatus: r.status,
+            toStatus: newStat,
+            timestamp: new Date().toISOString(),
+            actorRole: 'coordinator',
+            actionNote: note
+          };
+          return {
+            ...r,
+            status: newStat,
+            verificationStatus: newStat === 'resolved' ? 'resolved_verified' : 'coordinator_verified',
+            updatedAt: new Date().toISOString(),
+            history: [...r.history, hist]
+          };
+        });
+        setReports(updated);
+        setSelectedReport(updated.find(r => r.id === repId));
+      };
+
+      const handleExportCsv = () => {
+        const headers = "Report ID,Title,Category,Status,Location,Created At";
+        const rows = reports.map(r => `"${r.id}","${r.title}","${r.category}","${r.status}","${r.locationLandmark}","${r.createdAt}"`);
+        const csv = [headers, ...rows].join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `cleanstreet_export_${Date.now()}.csv`;
+        a.click();
+      };
+
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Civic Banner */}
+          <div style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a', padding: '0.5rem 1rem', fontSize: '0.85rem', color: '#92400e' }}>
+            <div className="clean-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>📢 <strong>Notice:</strong> {t.disclaimer}</span>
+              <button onClick={() => setTab('guidance')} style={{ background: 'none', border: 'none', color: '#b45309', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
+                Official Channels →
+              </button>
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <header style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', sticky: 'top', zIndex: 30 }}>
+            <div className="clean-container" style={{ height: '4rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div onClick={() => setTab('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <span style={{ fontSize: '1.75rem' }}>🧹</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a' }}>{t.appName}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Community Sanitation</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button onClick={() => setTab('dashboard')} style={{ padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', background: tab === 'dashboard' ? '#ecfdf5' : 'transparent', color: tab === 'dashboard' ? '#047857' : '#475569', fontWeight: 700, cursor: 'pointer' }}>
+                  📊 {t.dashboard}
+                </button>
+                <button onClick={() => setTab('report')} style={{ padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', background: tab === 'report' ? '#059669' : '#f1f5f9', color: tab === 'report' ? '#fff' : '#0f172a', fontWeight: 700, cursor: 'pointer' }}>
+                  ➕ {t.reportTab}
+                </button>
+                <button onClick={() => isCoordinator ? setTab('coordinator') : setIsAuthOpen(true)} style={{ padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: isCoordinator ? '1px solid #10b981' : '1px solid #cbd5e1', background: isCoordinator ? '#ecfdf5' : '#fff', color: isCoordinator ? '#065f46' : '#334155', fontWeight: 600, cursor: 'pointer' }}>
+                  {isCoordinator ? '🛡️' : '🔒'} {t.coordTab}
+                </button>
+                <button onClick={() => setLang(lang === 'en' ? 'te' : 'en')} style={{ padding: '0.35rem 0.6rem', border: '1px solid #cbd5e1', borderRadius: '0.375rem', background: '#f8fafc', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem' }}>
+                  {lang === 'en' ? 'తెలుగు' : 'English'}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Body */}
+          <main className="clean-container" style={{ flex: 1, padding: '1.5rem 1rem' }}>
+            {tab === 'dashboard' && (
+              <div>
+                {/* KPI Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div className="clean-card" onClick={() => setStatusFilter('all')} style={{ padding: '1.25rem', borderLeft: '4px solid #3b82f6', cursor: 'pointer' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Total Reports</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.total}</div>
+                  </div>
+                  <div className="clean-card" onClick={() => setStatusFilter('submitted')} style={{ padding: '1.25rem', borderLeft: '4px solid #f59e0b', cursor: 'pointer' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Awaiting Review</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.unresolved}</div>
+                  </div>
+                  <div className="clean-card" onClick={() => setStatusFilter('action_planned')} style={{ padding: '1.25rem', borderLeft: '4px solid #8b5cf6', cursor: 'pointer' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Action In Progress</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.inProgress}</div>
+                  </div>
+                  <div className="clean-card" onClick={() => setStatusFilter('resolved')} style={{ padding: '1.25rem', borderLeft: '4px solid #10b981', cursor: 'pointer' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Resolved & Cleaned</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.resolved}</div>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="clean-card" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Search ID, landmark, or description..."
+                    className="form-input"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    style={{ flex: 1, minWidth: '220px' }}
+                  />
+                  <select className="form-select" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ width: 'auto' }}>
+                    <option value="all">All Categories</option>
+                    {Object.keys(t.categories).map(k => <option key={k} value={k}>{t.categories[k].icon} {t.categories[k].label}</option>)}
+                  </select>
+                  <select className="form-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: 'auto' }}>
+                    <option value="all">All Statuses</option>
+                    {Object.keys(t.statuses).map(k => <option key={k} value={k}>{t.statuses[k].label}</option>)}
+                  </select>
+                </div>
+
+                {/* Report Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                  {filteredReports.map(r => (
+                    <div key={r.id} className="clean-card" onClick={() => setSelectedReport(r)} style={{ padding: '1.25rem', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 800, background: '#f1f5f9', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>{r.id}</span>
+                        <span className={`badge badge-${r.status.replace('_', '-')}`}>{t.statuses[r.status]?.badge || r.status}</span>
+                      </div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.35rem' }}>{r.title}</h3>
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.75rem' }}>{r.description.slice(0, 90)}...</p>
+                      <div style={{ fontSize: '0.8rem', color: '#334155' }}>📍 {r.locationLandmark}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tab === 'report' && (
+              <ReportFormView onSave={(data) => {
+                const rep = handleCreateReport(data);
+                alert(`Report registered successfully with ID: ${rep.id}`);
+                setTab('dashboard');
+              }} t={t} />
+            )}
+
+            {tab === 'coordinator' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Coordinator Moderation Center</h2>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={handleExportCsv} className="btn-secondary" style={{ minHeight: '36px', fontSize: '0.85rem' }}>📥 Export CSV</button>
+                    <button onClick={() => { sessionStorage.removeItem(COORDINATOR_AUTH_KEY); setIsCoordinator(false); setTab('dashboard'); }} className="btn-secondary" style={{ minHeight: '36px', fontSize: '0.85rem', color: '#dc2626' }}>Logout</button>
+                  </div>
+                </div>
+
+                <div className="clean-card" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ padding: '0.75rem 1rem' }}>ID</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Title & Landmark</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                        <th style={{ padding: '0.75rem 1rem' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reports.map(r => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontWeight: 700 }}>{r.id}</td>
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <div style={{ fontWeight: 600 }}>{r.title}</div>
+                            <div style={{ color: '#64748b', fontSize: '0.75rem' }}>📍 {r.locationLandmark}</div>
+                          </td>
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <span className={`badge badge-${r.status.replace('_', '-')}`}>{t.statuses[r.status]?.badge || r.status}</span>
+                          </td>
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <button onClick={() => setSelectedReport(r)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', minHeight: '30px', fontSize: '0.75rem' }}>
+                              Review / Update Status
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {tab === 'guidance' && (
+              <div className="clean-card" style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: '1rem' }}>🏛️ Official Sanitation Escalation Channels</h2>
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#92400e' }}>
+                  Always report emergency health hazards directly through your municipal corporation portal.
+                </div>
+                <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, fontSize: '0.9rem', color: '#334155' }}>
+                  <li><strong>Swachhata-MoHUA Mobile App:</strong> Official Pan-India municipal grievance application by Ministry of Housing and Urban Affairs.</li>
+                  <li><strong>CPGRAMS (pgportal.gov.in):</strong> Central government public grievance redressal portal.</li>
+                  <li><strong>City Helplines:</strong> GHMC (040-21111111), BBMP (1533), or your local ward sanitary inspector.</li>
+                </ul>
+              </div>
+            )}
+          </main>
+
+          {/* Details Modal */}
+          {selectedReport && (
+            <div className="modal-overlay" onClick={() => setSelectedReport(null)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '1.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', fontFamily: 'monospace', fontWeight: 800, background: '#f1f5f9', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>{selectedReport.id}</span>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, marginTop: '0.25rem' }}>{selectedReport.title}</h3>
+                  </div>
+                  <button onClick={() => setSelectedReport(null)} style={{ border: 'none', background: 'none', fontSize: '1.25rem', cursor: 'pointer' }}>✕</button>
+                </div>
+
+                <p style={{ fontSize: '0.9rem', color: '#334155', marginBottom: '1rem' }}>{selectedReport.description}</p>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.25rem' }}>📍 <strong>Landmark:</strong> {selectedReport.locationLandmark}</div>
+
+                {/* Audit History */}
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '0.75rem' }}>Audit & Action Timeline</h4>
+                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.25rem' }}>
+                  {selectedReport.history.map(h => (
+                    <div key={h.id} className="timeline-item">
+                      <div className="timeline-dot" />
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{new Date(h.timestamp).toLocaleString()} • {h.actorRole === 'coordinator' ? '🛡️ Coordinator' : '👤 Resident'}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>Status: {h.toStatus}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#334155' }}>{h.actionNote}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Coordinator Update Section */}
+                {isCoordinator && (
+                  <CoordinatorInlineUpdate
+                    report={selectedReport}
+                    onUpdate={(newStat, note) => handleUpdateStatus(selectedReport.id, newStat, note)}
+                  />
+                )}
+
+                <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+                  <button onClick={() => setSelectedReport(null)} className="btn-secondary">Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Auth Modal */}
+          {isAuthOpen && (
+            <div className="modal-overlay" onClick={() => setIsAuthOpen(false)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '2rem', maxWidth: '400px' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.5rem' }}>Coordinator Login</h3>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>Enter passcode to access coordinator tools. (Demo: <code>CLEAN2026</code>)</p>
+                <input
+                  type="password"
+                  id="passcode-input"
+                  className="form-input"
+                  placeholder="Passcode"
+                  style={{ marginBottom: '1rem' }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => setIsAuthOpen(false)} className="btn-secondary" style={{ flex: 1 }}>Cancel</button>
+                  <button onClick={() => {
+                    const pin = document.getElementById('passcode-input').value;
+                    if (pin === COORDINATOR_PIN) {
+                      sessionStorage.setItem(COORDINATOR_AUTH_KEY, 'true');
+                      setIsCoordinator(true);
+                      setIsAuthOpen(false);
+                      setTab('coordinator');
+                    } else {
+                      alert('Invalid passcode. Use: CLEAN2026');
+                    }
+                  }} className="btn-primary" style={{ flex: 1 }}>Login</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ReportFormView({ onSave, t }) {
+      const [title, setTitle] = useState('');
+      const [category, setCategory] = useState('garbage_overflow');
+      const [description, setDescription] = useState('');
+      const [locationLandmark, setLocationLandmark] = useState('');
+      const [urgency, setUrgency] = useState('normal');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim() || !description.trim() || !locationLandmark.trim()) {
+          alert('Please fill in title, description, and location landmark.');
+          return;
+        }
+        onSave({ title, category, description, locationLandmark, urgency });
+      };
+
+      return (
+        <div className="clean-card" style={{ maxWidth: '650px', margin: '0 auto', padding: '2rem' }}>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.35rem' }}>Submit a Sanitation Report</h2>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>Document waste and sanitation hazards for community tracking.</p>
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.25rem' }}>Category</label>
+              <select className="form-select" value={category} onChange={e => setCategory(e.target.value)}>
+                {Object.keys(t.categories).map(k => <option key={k} value={k}>{t.categories[k].icon} {t.categories[k].label}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.25rem' }}>Brief Title</label>
+              <input type="text" className="form-input" placeholder="e.g. Broken drainage pipe on Market Road" value={title} onChange={e => setTitle(e.target.value)} />
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.25rem' }}>Description</label>
+              <textarea rows={3} className="form-textarea" placeholder="Describe the hazard, foul smell, mosquito breeding, etc..." value={description} onChange={e => setDescription(e.target.value)} />
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.25rem' }}>Location / Landmark</label>
+              <input type="text" className="form-input" placeholder="e.g. Opposite Community Park, 2nd Main" value={locationLandmark} onChange={e => setLocationLandmark(e.target.value)} />
+            </div>
+            <button type="submit" className="btn-primary" style={{ width: '100%' }}>Submit Report</button>
+          </form>
+        </div>
+      );
+    }
+
+    function CoordinatorInlineUpdate({ report, onUpdate }) {
+      const [status, setStatus] = useState(report.status);
+      const [note, setNote] = useState('');
+
+      return (
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', padding: '1rem', borderRadius: '0.5rem' }}>
+          <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#065f46', marginBottom: '0.5rem' }}>🛡️ Coordinator Action & Status Update</h4>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+            <select className="form-select" value={status} onChange={e => setStatus(e.target.value)} style={{ width: 'auto' }}>
+              <option value="submitted">Submitted</option>
+              <option value="under_review">Under Review</option>
+              <option value="action_planned">Action Planned</option>
+              <option value="resolved">Resolved</option>
+              <option value="unable_to_resolve">Unable to Resolve</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Action note (e.g. Gang cleared drain silt on 14th Oct)..."
+              className="form-input"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+          </div>
+          <button
+            onClick={() => {
+              if (!note.trim()) { alert('Please provide an action note.'); return; }
+              onUpdate(status, note);
+              setNote('');
+            }}
+            className="btn-primary"
+            style={{ fontSize: '0.8rem', minHeight: '34px' }}
+          >
+            Record Action
+          </button>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
